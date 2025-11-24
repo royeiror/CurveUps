@@ -3,30 +3,20 @@ import sys
 import os
 import traceback
 
-# Add the current directory to sys.path for PyInstaller
-if getattr(sys, 'frozen', False):
-    # Running as compiled executable
-    application_path = sys._MEIPASS
-else:
-    # Running as script
-    application_path = os.path.dirname(os.path.abspath(__file__))
-
-sys.path.insert(0, application_path)
-
 def main():
     """Main entry point for the application."""
     try:
         from PyQt5.QtWidgets import QApplication, QMainWindow, QLabel, QVBoxLayout, QWidget
         
-        # Import our modules with proper error handling
+        # Import our modules - now they're proper packages
         try:
-            # These should work in both development and compiled mode
-            import main_pipeline
-            import parameterization
             from main_pipeline import CurveUpToolchain
+            from parameterization import MeshParameterizer
             toolchain_available = True
+            print("✓ All modules imported successfully!")
         except ImportError as e:
             print(f"Import error: {e}")
+            traceback.print_exc()
             toolchain_available = False
             # Create minimal fallback
             class CurveUpToolchain:
@@ -52,11 +42,12 @@ def main():
         toolchain_status = QLabel(f"Toolchain available: {toolchain_available}")
         layout.addWidget(toolchain_status)
         
-        # Add some basic functionality test
+        # Test toolchain functionality
         if toolchain_available:
             try:
                 toolchain = CurveUpToolchain()
-                test_label = QLabel("✓ Toolchain initialized successfully")
+                test_result = toolchain.load_mesh("test.stl")
+                test_label = QLabel("✓ Toolchain initialized and working!")
                 test_label.setStyleSheet("color: green;")
             except Exception as e:
                 test_label = QLabel(f"✗ Toolchain error: {e}")
@@ -67,24 +58,12 @@ def main():
         
         layout.addWidget(test_label)
         
-        # Instructions
-        instructions = QLabel(
-            "Next steps:\n"
-            "1. Implement mesh loading\n"
-            "2. Add parameterization algorithms\n"
-            "3. Create pattern export functionality"
-        )
-        layout.addWidget(instructions)
-        
         central_widget.setLayout(layout)
         window.setCentralWidget(central_widget)
         
         window.show()
         
         print("Application started successfully!")
-        if not toolchain_available:
-            print("Warning: Toolchain modules not loaded")
-        
         return app.exec_()
         
     except Exception as e:
