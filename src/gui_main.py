@@ -1,72 +1,175 @@
-# src/gui_main.py
+# src/gui_main.py - Enhanced version
 import sys
 import os
-import traceback
+from PyQt5.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, 
+                             QPushButton, QLabel, QFileDialog, QComboBox, 
+                             QDoubleSpinBox, QGroupBox, QTextEdit, QProgressBar)
+from PyQt5.QtCore import Qt
 
-# Add the current directory to Python path
-current_dir = os.path.dirname(os.path.abspath(__file__))
-if current_dir not in sys.path:
-    sys.path.insert(0, current_dir)
-
-try:
-    # Try absolute imports first
-    from main_pipeline import CurveUpToolchain
-    from parameterization import MeshParameterizer
-except ImportError:
-    try:
-        # Try relative imports
-        from .main_pipeline import CurveUpToolchain
-        from .parameterization import MeshParameterizer
-    except ImportError as e:
-        print(f"Import error: {e}")
-        traceback.print_exc()
-        # Create fallback classes
-        class CurveUpToolchain:
-            def __init__(self):
-                self.input_mesh = None
-        class MeshParameterizer:
-            def __init__(self, mesh):
-                self.mesh = mesh
-
-def main():
-    """Main entry point for the application."""
-    try:
-        from PyQt5.QtWidgets import QApplication, QMainWindow, QLabel, QVBoxLayout, QWidget
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.toolchain = None
+        self.init_ui()
         
-        app = QApplication(sys.argv)
+    def init_ui(self):
+        self.setWindowTitle("CurveUp Toolchain - 3D to 2D Pattern Generator")
+        self.setGeometry(100, 100, 800, 600)
         
-        # Test if our modules loaded
-        toolchain = CurveUpToolchain()
-        
-        window = QMainWindow()
-        window.setWindowTitle("CurveUp Toolchain")
-        window.setGeometry(100, 100, 500, 300)
-        
+        # Central widget
+        from PyQt5.QtWidgets import QWidget
         central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        
         layout = QVBoxLayout()
         
-        label = QLabel("CurveUp Toolchain - Successfully Built!")
-        label.setStyleSheet("font-size: 18px; padding: 20px; color: green;")
-        layout.addWidget(label)
+        # Header
+        header = QLabel("CurveUp Fabric Pattern Generator")
+        header.setStyleSheet("font-size: 20px; font-weight: bold; padding: 10px;")
+        layout.addWidget(header)
         
-        status_label = QLabel("3D to 2D fabric pattern generator")
-        layout.addWidget(status_label)
+        # File operations
+        file_group = QGroupBox("3D Model Input")
+        file_layout = QVBoxLayout()
         
-        modules_label = QLabel(f"Toolchain loaded: {type(toolchain).__name__}")
-        layout.addWidget(modules_label)
+        self.btn_load = QPushButton("Load 3D Model (STL/OBJ/PLY)")
+        self.btn_load.clicked.connect(self.load_model)
+        file_layout.addWidget(self.btn_load)
+        
+        self.file_label = QLabel("No model loaded")
+        file_layout.addWidget(self.file_label)
+        
+        file_group.setLayout(file_layout)
+        layout.addWidget(file_group)
+        
+        # Parameterization settings
+        param_group = QGroupBox("Parameterization Settings")
+        param_layout = QVBoxLayout()
+        
+        self.cmb_method = QComboBox()
+        self.cmb_method.addItems(["Conformal", "LSCM", "ARAP"])
+        param_layout.addWidget(QLabel("Parameterization Method:"))
+        param_layout.addWidget(self.cmb_method)
+        
+        param_group.setLayout(param_layout)
+        layout.addWidget(param_group)
+        
+        # Fabric properties
+        fabric_group = QGroupBox("Fabric Properties")
+        fabric_layout = QHBoxLayout()
+        
+        self.spin_stretch_x = QDoubleSpinBox()
+        self.spin_stretch_x.setRange(0.1, 3.0)
+        self.spin_stretch_x.setValue(1.2)
+        fabric_layout.addWidget(QLabel("X Stretch:"))
+        fabric_layout.addWidget(self.spin_stretch_x)
+        
+        self.spin_stretch_y = QDoubleSpinBox()
+        self.spin_stretch_y.setRange(0.1, 3.0)
+        self.spin_stretch_y.setValue(1.2)
+        fabric_layout.addWidget(QLabel("Y Stretch:"))
+        fabric_layout.addWidget(self.spin_stretch_y)
+        
+        fabric_group.setLayout(fabric_layout)
+        layout.addWidget(fabric_group)
+        
+        # Process buttons
+        self.btn_generate = QPushButton("Generate 2D Pattern")
+        self.btn_generate.clicked.connect(self.generate_pattern)
+        layout.addWidget(self.btn_generate)
+        
+        self.btn_export = QPushButton("Export Pattern (DXF/SVG)")
+        self.btn_export.clicked.connect(self.export_pattern)
+        layout.addWidget(self.btn_export)
+        
+        # Progress bar
+        self.progress = QProgressBar()
+        self.progress.setVisible(False)
+        layout.addWidget(self.progress)
+        
+        # Log output
+        self.text_log = QTextEdit()
+        self.text_log.setMaximumHeight(150)
+        layout.addWidget(QLabel("Log:"))
+        layout.addWidget(self.text_log)
         
         central_widget.setLayout(layout)
-        window.setCentralWidget(central_widget)
         
-        window.show()
+        # Initialize toolchain
+        self.init_toolchain()
         
-        print("CurveUp Toolchain started successfully!")
-        return app.exec_()
-        
-    except Exception as e:
-        print(f"Error starting application: {e}")
-        traceback.print_exc()
-        return 1
+    def init_toolchain(self):
+        try:
+            from main_pipeline import CurveUpToolchain
+            self.toolchain = CurveUpToolchain()
+            self.log_message("Toolchain initialized successfully")
+        except Exception as e:
+            self.log_message(f"Error initializing toolchain: {e}")
+            
+    def load_model(self):
+        filepath, _ = QFileDialog.getOpenFileName(
+            self, "Open 3D Model", "", 
+            "3D Files (*.stl *.obj *.ply *.off)"
+        )
+        if filepath and self.toolchain:
+            try:
+                if self.toolchain.load_mesh(filepath):
+                    self.file_label.setText(f"Loaded: {os.path.basename(filepath)}")
+                    self.log_message(f"Successfully loaded: {filepath}")
+                else:
+                    self.log_message("Failed to load model")
+            except Exception as e:
+                self.log_message(f"Error loading model: {e}")
+                
+    def generate_pattern(self):
+        if not self.toolchain:
+            self.log_message("Toolchain not initialized")
+            return
+            
+        try:
+            self.progress.setVisible(True)
+            method = self.cmb_method.currentText().lower()
+            stretch_factors = (self.spin_stretch_x.value(), self.spin_stretch_y.value())
+            
+            self.log_message("Starting parameterization...")
+            self.toolchain.parameterize_mesh(method)
+            
+            self.log_message("Optimizing pattern...")
+            self.toolchain.optimize_pattern(stretch_factors)
+            
+            self.log_message("Pattern generation complete!")
+            self.progress.setVisible(False)
+            
+        except Exception as e:
+            self.log_message(f"Error generating pattern: {e}")
+            self.progress.setVisible(False)
+            
+    def export_pattern(self):
+        if not self.toolchain:
+            self.log_message("Toolchain not initialized")
+            return
+            
+        filepath, _ = QFileDialog.getSaveFileName(
+            self, "Export Pattern", "",
+            "DXF Files (*.dxf);;SVG Files (*.svg)"
+        )
+        if filepath:
+            try:
+                if self.toolchain.export_pattern(filepath):
+                    self.log_message(f"Pattern exported to: {filepath}")
+                else:
+                    self.log_message("Export failed")
+            except Exception as e:
+                self.log_message(f"Error exporting pattern: {e}")
+                
+    def log_message(self, message):
+        self.text_log.append(message)
+
+def main():
+    app = QApplication(sys.argv)
+    window = MainWindow()
+    window.show()
+    return app.exec_()
 
 if __name__ == "__main__":
     sys.exit(main())
