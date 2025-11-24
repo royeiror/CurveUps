@@ -3,3 +3,5 @@ numpy>=1.20.0
 scipy>=1.6.0
 trimesh>=3.9.0
 ezdxf>=0.17.0
+svgwrite>=1.4.0
+matplotlib>=3.3.0
