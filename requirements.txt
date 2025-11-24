@@ -1,2 +1,5 @@
 PyQt5>=5.15.0
 numpy>=1.20.0
+scipy>=1.6.0
+trimesh>=3.9.0
+ezdxf>=0.17.0
