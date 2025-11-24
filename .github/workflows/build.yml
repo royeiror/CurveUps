@@ -27,9 +27,16 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller
         
-    - name: Build executable with PyInstaller using spec
+    - name: Build from src directory
       run: |
-        pyinstaller build.spec
+        # Change to src directory and build there
+        cd src
+        pyinstaller --onefile --windowed --name CurveUpToolchain gui_main.py
+        # Move the executable to the main dist folder
+        if (!(Test-Path "..\dist")) {
+            mkdir ..\dist
+        }
+        copy dist\CurveUpToolchain.exe ..\dist\
         
     - name: Upload executable artifact
       uses: actions/upload-artifact@v4
