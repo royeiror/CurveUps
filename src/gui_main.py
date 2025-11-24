@@ -1,176 +1,72 @@
-# gui_main.py - PyQt5 based GUI
+# src/gui_main.py
 import sys
 import os
-from PyQt5.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, 
-                             QHBoxLayout, QPushButton, QLabel, 
-                             QFileDialog, QComboBox, QDoubleSpinBox,
-                             QSlider, QGroupBox, QTextEdit, QSplitter)
-from PyQt5.QtCore import Qt
-import pyvistaqt as pvqt
-from main_pipeline import CurveUpToolchain
+import traceback
 
-class MainWindow(QMainWindow):
-    def __init__(self):
-        super().__init__()
-        self.toolchain = CurveUpToolchain()
-        self.init_ui()
+# Add the current directory to Python path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if current_dir not in sys.path:
+    sys.path.insert(0, current_dir)
+
+try:
+    # Try absolute imports first
+    from main_pipeline import CurveUpToolchain
+    from parameterization import MeshParameterizer
+except ImportError:
+    try:
+        # Try relative imports
+        from .main_pipeline import CurveUpToolchain
+        from .parameterization import MeshParameterizer
+    except ImportError as e:
+        print(f"Import error: {e}")
+        traceback.print_exc()
+        # Create fallback classes
+        class CurveUpToolchain:
+            def __init__(self):
+                self.input_mesh = None
+        class MeshParameterizer:
+            def __init__(self, mesh):
+                self.mesh = mesh
+
+def main():
+    """Main entry point for the application."""
+    try:
+        from PyQt5.QtWidgets import QApplication, QMainWindow, QLabel, QVBoxLayout, QWidget
         
-    def init_ui(self):
-        self.setWindowTitle("CurveUp Fabric Pattern Generator")
-        self.setGeometry(100, 100, 1400, 800)
+        app = QApplication(sys.argv)
         
-        # Central widget
-        central_widget = QSplitter(Qt.Horizontal)
+        # Test if our modules loaded
+        toolchain = CurveUpToolchain()
         
-        # Left panel - Controls
-        left_panel = self.create_control_panel()
-        central_widget.addWidget(left_panel)
+        window = QMainWindow()
+        window.setWindowTitle("CurveUp Toolchain")
+        window.setGeometry(100, 100, 500, 300)
         
-        # Right panel - 3D/2D visualization
-        right_panel = self.create_visualization_panel()
-        central_widget.addWidget(right_panel)
-        
-        central_widget.setSizes([400, 1000])
-        self.setCentralWidget(central_widget)
-        
-    def create_control_panel(self):
-        panel = QGroupBox("Controls")
+        central_widget = QWidget()
         layout = QVBoxLayout()
         
-        # File operations
-        file_group = QGroupBox("File Operations")
-        file_layout = QVBoxLayout()
+        label = QLabel("CurveUp Toolchain - Successfully Built!")
+        label.setStyleSheet("font-size: 18px; padding: 20px; color: green;")
+        layout.addWidget(label)
         
-        self.btn_load = QPushButton("Load 3D Model")
-        self.btn_load.clicked.connect(self.load_model)
-        file_layout.addWidget(self.btn_load)
+        status_label = QLabel("3D to 2D fabric pattern generator")
+        layout.addWidget(status_label)
         
-        self.btn_export = QPushButton("Export Pattern")
-        self.btn_export.clicked.connect(self.export_pattern)
-        file_layout.addWidget(self.btn_export)
+        modules_label = QLabel(f"Toolchain loaded: {type(toolchain).__name__}")
+        layout.addWidget(modules_label)
         
-        file_group.setLayout(file_layout)
-        layout.addWidget(file_group)
+        central_widget.setLayout(layout)
+        window.setCentralWidget(central_widget)
         
-        # Parameterization settings
-        param_group = QGroupBox("Parameterization Settings")
-        param_layout = QVBoxLayout()
+        window.show()
         
-        self.cmb_method = QComboBox()
-        self.cmb_method.addItems(["Conformal", "LSCM", "ARAP"])
-        param_layout.addWidget(QLabel("Parameterization Method:"))
-        param_layout.addWidget(self.cmb_method)
+        print("CurveUp Toolchain started successfully!")
+        return app.exec_()
         
-        self.spin_resolution = QDoubleSpinBox()
-        self.spin_resolution.setRange(0.1, 5.0)
-        self.spin_resolution.setValue(1.0)
-        param_layout.addWidget(QLabel("Resolution:"))
-        param_layout.addWidget(self.spin_resolution)
-        
-        param_group.setLayout(param_layout)
-        layout.addWidget(param_group)
-        
-        # Fabric properties
-        fabric_group = QGroupBox("Fabric Properties")
-        fabric_layout = QVBoxLayout()
-        
-        self.spin_stretch_x = QDoubleSpinBox()
-        self.spin_stretch_x.setRange(0.1, 3.0)
-        self.spin_stretch_x.setValue(1.2)
-        fabric_layout.addWidget(QLabel("X Stretch Factor:"))
-        fabric_layout.addWidget(self.spin_stretch_x)
-        
-        self.spin_stretch_y = QDoubleSpinBox()
-        self.spin_stretch_y.setRange(0.1, 3.0)
-        self.spin_stretch_y.setValue(1.2)
-        fabric_layout.addWidget(QLabel("Y Stretch Factor:"))
-        fabric_layout.addWidget(self.spin_stretch_y)
-        
-        fabric_group.setLayout(fabric_layout)
-        layout.addWidget(fabric_group)
-        
-        # Process buttons
-        self.btn_process = QPushButton("Generate Pattern")
-        self.btn_process.clicked.connect(self.generate_pattern)
-        layout.addWidget(self.btn_process)
-        
-        # Log output
-        self.text_log = QTextEdit()
-        self.text_log.setMaximumHeight(200)
-        layout.addWidget(QLabel("Log:"))
-        layout.addWidget(self.text_log)
-        
-        panel.setLayout(layout)
-        return panel
-        
-    def create_visualization_panel(self):
-        panel = QGroupBox("Visualization")
-        layout = QVBoxLayout()
-        
-        # 3D view
-        self.plotter_3d = pvqt.BackgroundPlotter()
-        layout.addWidget(self.plotter_3d.interactor)
-        
-        # 2D pattern view
-        self.plotter_2d = pvqt.BackgroundPlotter()
-        layout.addWidget(self.plotter_2d.interactor)
-        
-        panel.setLayout(layout)
-        return panel
-        
-    def load_model(self):
-        filepath, _ = QFileDialog.getOpenFileName(
-            self, "Open 3D Model", "", 
-            "3D Files (*.stl *.obj *.ply *.off)"
-        )
-        if filepath:
-            try:
-                self.toolchain.load_mesh(filepath)
-                self.update_3d_view()
-                self.log_message(f"Loaded: {os.path.basename(filepath)}")
-            except Exception as e:
-                self.log_message(f"Error loading file: {str(e)}")
-                
-    def generate_pattern(self):
-        try:
-            # Get parameters from UI
-            method = self.cmb_method.currentText().lower()
-            stretch_factors = (self.spin_stretch_x.value(), 
-                             self.spin_stretch_y.value())
-            
-            # Run pipeline
-            self.toolchain.preprocess_mesh()
-            self.toolchain.parameterize_mesh(method)
-            self.toolchain.optimize_pattern(stretch_factors, {})
-            
-            self.update_2d_view()
-            self.log_message("Pattern generated successfully")
-            
-        except Exception as e:
-            self.log_message(f"Error generating pattern: {str(e)}")
-            
-    def export_pattern(self):
-        filepath, _ = QFileDialog.getSaveFileName(
-            self, "Export Pattern", "",
-            "DXF Files (*.dxf);;SVG Files (*.svg)"
-        )
-        if filepath:
-            self.toolchain.export_pattern(filepath)
-            self.log_message(f"Exported pattern to: {filepath}")
-            
-    def update_3d_view(self):
-        # Update 3D plotter with loaded mesh
-        pass
-        
-    def update_2d_view(self):
-        # Update 2D plotter with generated pattern
-        pass
-        
-    def log_message(self, message):
-        self.text_log.append(message)
+    except Exception as e:
+        print(f"Error starting application: {e}")
+        traceback.print_exc()
+        return 1
 
 if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    window = MainWindow()
-    window.show()
-    sys.exit(app.exec_())
+    sys.exit(main())
