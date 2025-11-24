@@ -29,7 +29,11 @@ jobs:
         
     - name: Build executable with PyInstaller
       run: |
-        pyinstaller --onefile --windowed --name CurveUpToolchain src/gui_main.py
+        pyinstaller --onefile --windowed --name CurveUpToolchain ^
+          --add-data "src/*.py;." ^
+          --hidden-import=main_pipeline ^
+          --hidden-import=parameterization ^
+          src/gui_main.py
         
     - name: Upload executable artifact
       uses: actions/upload-artifact@v4
