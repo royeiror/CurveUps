@@ -1,0 +1,16 @@
+@echo off
+REM build_windows.bat
+echo Building CurveUp Toolchain...
+
+REM Create virtual environment
+python -m venv curveup_env
+call curveup_env\Scripts\activate.bat
+
+REM Install dependencies
+pip install -r requirements.txt
+
+REM Create executable (if using PyInstaller)
+pip install pyinstaller
+pyinstaller --onefile --windowed --name CurveUpToolchain gui_main.py
+
+echo Build complete!
