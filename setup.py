@@ -1,12 +1,43 @@
+
+## Solution 2: Update setup.py to Handle Missing Files
+
+Modify your `setup.py` to be more robust:
+
+```python
 # setup.py
 from setuptools import setup, find_packages
 import os
+from pathlib import Path
 
-with open("README.md", "r", encoding="utf-8") as fh:
-    long_description = fh.read()
+# Get current directory
+current_dir = Path(__file__).parent
 
-with open("requirements.txt", "r", encoding="utf-8") as fh:
-    requirements = fh.read().splitlines()
+# Read README if it exists
+readme_path = current_dir / "README.md"
+if readme_path.exists():
+    with open(readme_path, "r", encoding="utf-8") as fh:
+        long_description = fh.read()
+else:
+    long_description = "CurveUp Toolchain - 3D to 2D fabric pattern generator"
+
+# Read requirements if the file exists
+requirements_path = current_dir / "requirements.txt"
+if requirements_path.exists():
+    with open(requirements_path, "r", encoding="utf-8") as fh:
+        requirements = fh.read().splitlines()
+else:
+    requirements = [
+        "PyQt5>=5.15.0",
+        "trimesh>=3.9.0", 
+        "numpy>=1.20.0",
+        "scipy>=1.6.0",
+        "pyvista>=0.32.0",
+        "pyvistaqt>=0.7.0",
+        "matplotlib>=3.3.0",
+        "networkx>=2.5.0",
+        "ezdxf>=0.17.0",
+        "svgwrite>=1.4.0"
+    ]
 
 setup(
     name="curveup-toolchain",
@@ -17,7 +48,8 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/yourusername/curveup-toolchain",
-    packages=find_packages(),
+    packages=find_packages(where="src") if os.path.exists("src") else find_packages(),
+    package_dir={"": "src"} if os.path.exists("src") else {},
     classifiers=[
         "Development Status :: 3 - Alpha",
         "Intended Audience :: Manufacturing",
@@ -37,7 +69,4 @@ setup(
         ],
     },
     include_package_data=True,
-    package_data={
-        "curveup": ["assets/*", "templates/*"],
-    },
 )
