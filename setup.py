@@ -1,9 +1,3 @@
-
-## Solution 2: Update setup.py to Handle Missing Files
-
-Modify your `setup.py` to be more robust:
-
-```python
 # setup.py
 from setuptools import setup, find_packages
 import os
