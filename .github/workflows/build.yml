@@ -27,11 +27,15 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller
         
-    - name: Build with package collection
+    - name: Build with hooks and hidden imports
       shell: cmd
       run: |
         cd src
-        pyinstaller --onefile --windowed --name CurveUpToolchain --collect-all curveup gui_main.py
+        pyinstaller --onefile --windowed --name CurveUpToolchain ^
+          --additional-hooks-dir=. ^
+          --hidden-import=curveup.main_pipeline ^
+          --hidden-import=curveup.parameterization ^
+          gui_main.py
         
     - name: Upload executable
       uses: actions/upload-artifact@v4
