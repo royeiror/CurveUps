@@ -27,10 +27,6 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller
         
-    - name: List files for debugging
-      run: |
-        dir /s
-      
     - name: Build executable with PyInstaller
       run: |
         pyinstaller --onefile --windowed --name CurveUpToolchain src/gui_main.py
