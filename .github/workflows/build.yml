@@ -27,25 +27,15 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller
         
-    - name: Build executable
+    - name: Build with package collection
       shell: cmd
       run: |
         cd src
-        pyinstaller --onefile --windowed --name CurveUpToolchain --hidden-import main_pipeline --hidden-import parameterization gui_main.py
+        pyinstaller --onefile --windowed --name CurveUpToolchain --collect-all curveup gui_main.py
         
-    - name: Create dist directory in root
-      shell: cmd
-      run: |
-        mkdir dist
-        
-    - name: Copy executable to root dist
-      shell: cmd
-      run: |
-        copy src\dist\CurveUpToolchain.exe dist\
-        
-    - name: Upload executable artifact
+    - name: Upload executable
       uses: actions/upload-artifact@v4
       with:
         name: CurveUpToolchain-Windows
-        path: dist/CurveUpToolchain.exe
+        path: src/dist/CurveUpToolchain.exe
         retention-days: 30
