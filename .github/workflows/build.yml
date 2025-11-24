@@ -39,7 +39,8 @@ jobs:
         name: CurveUpToolchain-Windows
         path: src/dist/CurveUpToolchain.exe
         retention-days: 30# .github/workflows/build-windows.yml
-name: Build Windows Executable
+        
+    - name: Build Windows Executable
 
 on:
   push:
