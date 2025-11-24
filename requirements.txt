@@ -1,3 +1,4 @@
+# requirements.txt
 PyQt5>=5.15.0
 trimesh>=3.9.0
 numpy>=1.20.0
@@ -6,3 +7,9 @@ pyvista>=0.32.0
 pyvistaqt>=0.7.0
 matplotlib>=3.3.0
 networkx>=2.5.0
+pyinstaller>=5.0.0 ; sys_platform == "win32"
+pywin32>=300 ; sys_platform == "win32"
+ezdxf>=0.17.0
+svgwrite>=1.4.0
+pytest>=6.0.0 ; extra == 'test'
+pytest-qt>=4.0.0 ; extra == 'test'
