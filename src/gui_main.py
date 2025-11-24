@@ -1,4 +1,3 @@
-# src/gui_main.py
 import sys
 import os
 import traceback
@@ -8,10 +7,10 @@ def main():
     try:
         from PyQt5.QtWidgets import QApplication, QMainWindow, QLabel, QVBoxLayout, QWidget
         
-        # Import our modules - now they're proper packages
+        # Import our modules from the curveup package
         try:
-            from main_pipeline import CurveUpToolchain
-            from parameterization import MeshParameterizer
+            from curveup.main_pipeline import CurveUpToolchain
+            from curveup.parameterization import MeshParameterizer
             toolchain_available = True
             print("✓ All modules imported successfully!")
         except ImportError as e:
@@ -35,26 +34,19 @@ def main():
         layout = QVBoxLayout()
         
         # Status information
-        status_label = QLabel("CurveUp Toolchain - Running")
+        status_label = QLabel("CurveUp Toolchain")
         status_label.setStyleSheet("font-size: 18px; font-weight: bold; padding: 10px;")
         layout.addWidget(status_label)
         
-        toolchain_status = QLabel(f"Toolchain available: {toolchain_available}")
+        toolchain_status = QLabel(f"Modules loaded: {toolchain_available}")
         layout.addWidget(toolchain_status)
         
-        # Test toolchain functionality
         if toolchain_available:
-            try:
-                toolchain = CurveUpToolchain()
-                test_result = toolchain.load_mesh("test.stl")
-                test_label = QLabel("✓ Toolchain initialized and working!")
-                test_label.setStyleSheet("color: green;")
-            except Exception as e:
-                test_label = QLabel(f"✗ Toolchain error: {e}")
-                test_label.setStyleSheet("color: red;")
+            test_label = QLabel("✓ All modules imported successfully!")
+            test_label.setStyleSheet("color: green;")
         else:
-            test_label = QLabel("⚠ Toolchain modules not found")
-            test_label.setStyleSheet("color: orange;")
+            test_label = QLabel("✗ Modules not found - check PyInstaller configuration")
+            test_label.setStyleSheet("color: red;")
         
         layout.addWidget(test_label)
         
