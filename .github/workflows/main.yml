@@ -1,16 +1,145 @@
-@echo off
-REM build_windows.bat
-echo Building CurveUp Toolchain...
+# .github/workflows/build.yml
+name: Build CurveUp Toolchain
 
-REM Create virtual environment
-python -m venv curveup_env
-call curveup_env\Scripts\activate.bat
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  release:
+    types: [ published ]
 
-REM Install dependencies
-pip install -r requirements.txt
-
-REM Create executable (if using PyInstaller)
-pip install pyinstaller
-pyinstaller --onefile --windowed --name CurveUpToolchain gui_main.py
-
-echo Build complete!
+jobs:
+  build-windows:
+    name: Build Windows Executable
+    runs-on: windows-latest
+    
+    strategy:
+      matrix:
+        python-version: [ '3.9', '3.10', '3.11' ]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+        
+    - name: Install system dependencies
+      run: |
+        # Install Windows build tools if needed
+        python -m pip install --upgrade pip
+        pip install wheel setuptools
+        
+    - name: Install Python dependencies
+      run: |
+        pip install -r requirements.txt
+        # Additional dependencies for building
+        pip install pyinstaller pywin32
+        
+    - name: Run tests
+      run: |
+        python -m pytest tests/ -v
+      continue-on-error: true
+      
+    - name: Build executable with PyInstaller
+      run: |
+        pyinstaller --onefile --windowed --name CurveUpToolchain --icon=assets/icon.ico gui_main.py
+        # Alternative if you have multiple files
+        # pyinstaller --onefile --windowed --name CurveUpToolchain --add-data "templates;templates" --hidden-import=scipy.sparse.csgraph main.py
+        
+    - name: Create distribution package
+      run: |
+        mkdir dist_package
+        copy dist\CurveUpToolchain.exe dist_package\
+        copy README.md dist_package\
+        copy LICENSE dist_package\
+        copy examples\* dist_package\ 2>nul || echo "No examples found"
+        7z a -r CurveUpToolchain-${{ github.sha }}-py${{ matrix.python-version }}.zip dist_package\*
+        
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: CurveUpToolchain-py${{ matrix.python-version }}
+        path: |
+          CurveUpToolchain-${{ github.sha }}-py${{ matrix.python-version }}.zip
+          dist/CurveUpToolchain.exe
+        retention-days: 30
+        
+  build-cross-platform:
+    name: Build Cross-Platform
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ windows-latest, ubuntu-latest, macos-latest ]
+        python-version: [ '3.10' ]
+        
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+        
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+        
+    - name: Test imports
+      run: |
+        python -c "
+        import trimesh
+        import numpy as np
+        import scipy
+        print('All imports successful')
+        "
+        
+    - name: Create source distribution
+      run: |
+        python setup.py sdist bdist_wheel
+        
+    - name: Upload source distribution
+      uses: actions/upload-artifact@v4
+      with:
+        name: source-dist-${{ matrix.os }}
+        path: dist/*.whl
+        
+  release:
+    name: Create Release
+    runs-on: windows-latest
+    needs: [ build-windows, build-cross-platform ]
+    if: github.event_name == 'release'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      
+    - name: List downloaded artifacts
+      run: ls -R
+      
+    - name: Create Release Package
+      run: |
+        mkdir release-package
+        # Copy Windows executable
+        copy "CurveUpToolchain-py3.10/CurveUpToolchain.exe" release-package/
+        # Copy other artifacts
+        copy README.md release-package/
+        copy LICENSE release-package/
+        copy requirements.txt release-package/
+        
+        # Create final zip
+        7z a -r CurveUpToolchain-${{ github.ref_name }}-Windows.zip release-package\*
+        
+    - name: Upload Release Assets
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          CurveUpToolchain-${{ github.ref_name }}-Windows.zip
+          source-dist-*/dist/*.whl
