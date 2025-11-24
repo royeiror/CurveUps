@@ -27,14 +27,11 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller
         
-    - name: Build with hooks
+    - name: Build executable
+      shell: cmd  # Use CMD to avoid PowerShell line continuation issues
       run: |
         cd src
-        pyinstaller --onefile --windowed --name CurveUpToolchain ^
-          --additional-hooks-dir=. ^
-          --hidden-import=main_pipeline ^
-          --hidden-import=parameterization ^
-          gui_main.py
+        pyinstaller --onefile --windowed --name CurveUpToolchain --collect-all main_pipeline --collect-all parameterization gui_main.py
         move dist\CurveUpToolchain.exe ..\dist\
         
     - name: Upload executable artifact
