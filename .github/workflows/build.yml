@@ -27,12 +27,13 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller
         
-    - name: Build with collect-all
+    - name: Build with hooks
       run: |
         cd src
         pyinstaller --onefile --windowed --name CurveUpToolchain ^
-          --collect-all main_pipeline ^
-          --collect-all parameterization ^
+          --additional-hooks-dir=. ^
+          --hidden-import=main_pipeline ^
+          --hidden-import=parameterization ^
           gui_main.py
         move dist\CurveUpToolchain.exe ..\dist\
         
