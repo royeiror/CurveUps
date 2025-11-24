@@ -27,16 +27,14 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller
         
-    - name: Build from src directory
+    - name: Build with collect-all
       run: |
-        # Change to src directory and build there
         cd src
-        pyinstaller --onefile --windowed --name CurveUpToolchain gui_main.py
-        # Move the executable to the main dist folder
-        if (!(Test-Path "..\dist")) {
-            mkdir ..\dist
-        }
-        copy dist\CurveUpToolchain.exe ..\dist\
+        pyinstaller --onefile --windowed --name CurveUpToolchain ^
+          --collect-all main_pipeline ^
+          --collect-all parameterization ^
+          gui_main.py
+        move dist\CurveUpToolchain.exe ..\dist\
         
     - name: Upload executable artifact
       uses: actions/upload-artifact@v4
