@@ -1,46 +1,42 @@
-# src/main_pipeline.py - CORRECTED VERSION
+# src/main_pipeline.py
 import numpy as np
-from scipy.optimize import minimize
+from scipy.spatial import Delaunay
 
 class CurveUpToolchain:
     def __init__(self):
         self.input_mesh = None
-        self.optimized_curves = None
+        self.optimized_triangles = None
         self.stretch_factors = (1.0, 1.0)
         
     def load_mesh(self, filepath):
         """Load target 3D shape"""
         try:
-            # For now, use a simple demo surface
+            # For now, use a curved demo surface
             self.input_mesh = self._create_demo_surface()
             return f"✓ Loaded target shape: {len(self.input_mesh['vertices'])} vertices"
         except Exception as e:
             return f"✗ Error loading shape: {str(e)}"
     
     def _create_demo_surface(self):
-        """Create a curved surface for demonstration"""
-        # Create a wavy surface (like the paper's examples)
-        x = np.linspace(-1, 1, 20)
-        y = np.linspace(-1, 1, 20)
+        """Create a curved surface for demonstration (like paper examples)"""
+        # Create a saddle surface or dome
+        x = np.linspace(-1, 1, 15)
+        y = np.linspace(-1, 1, 15)
         X, Y = np.meshgrid(x, y)
-        Z = 0.3 * np.sin(2 * np.pi * X) * np.cos(2 * np.pi * Y)  # Wavy surface
+        
+        # Saddle surface: z = x^2 - y^2
+        Z = X**2 - Y**2
         
         vertices = np.column_stack([X.flatten(), Y.flatten(), Z.flatten()])
         
-        # Simple triangulation
-        faces = []
-        for i in range(19):
-            for j in range(19):
-                v1 = i * 20 + j
-                v2 = v1 + 1
-                v3 = v1 + 20
-                v4 = v2 + 20
-                faces.extend([[v1, v2, v3], [v2, v4, v3]])
+        # Create triangular mesh using Delaunay triangulation
+        tri = Delaunay(np.column_stack([X.flatten(), Y.flatten()]))
+        faces = tri.simplices
         
         return {"vertices": vertices, "faces": faces}
     
-    def compute_optimal_curves(self, stretch_x=1.5, stretch_y=1.5, curve_density=10):
-        """Compute optimal curves for 3D printing on stretched fabric"""
+    def compute_optimal_triangles(self, stretch_x=1.5, stretch_y=1.5, triangle_density=0.1):
+        """Compute adaptive triangular mesh for 3D printing on stretched fabric"""
         if self.input_mesh is None:
             return "✗ No target shape loaded"
         
@@ -48,185 +44,257 @@ class CurveUpToolchain:
             self.stretch_factors = (stretch_x, stretch_y)
             
             # Core CurveUp algorithm:
-            # 1. Analyze surface curvature
+            # 1. Compute surface curvature to determine triangle sizes
             curvature_map = self._compute_surface_curvature()
             
-            # 2. Generate candidate curves
-            candidate_curves = self._generate_candidate_curves(curvature_map, curve_density)
+            # 2. Generate adaptive triangular mesh
+            adaptive_mesh = self._generate_adaptive_mesh(curvature_map, triangle_density)
             
-            # 3. Optimize curve placement considering fabric mechanics
-            self.optimized_curves = self._optimize_curve_placement(
-                candidate_curves, curvature_map, stretch_x, stretch_y
+            # 3. Optimize triangle distribution for fabric mechanics
+            self.optimized_triangles = self._optimize_triangle_placement(
+                adaptive_mesh, curvature_map, stretch_x, stretch_y
             )
             
-            return f"✓ Computed {len(self.optimized_curves)} optimal curves"
+            return f"✓ Computed {len(self.optimized_triangles)} adaptive triangles"
             
         except Exception as e:
-            return f"✗ Curve computation error: {str(e)}"
+            return f"✗ Triangle computation error: {str(e)}"
     
     def _compute_surface_curvature(self):
-        """Compute principal curvatures of the surface"""
-        # Simplified curvature computation
+        """Compute mean curvature to guide triangle sizing"""
         vertices = self.input_mesh['vertices']
+        faces = self.input_mesh['faces']
         curvature = np.zeros(len(vertices))
         
-        # Simple approximation: use z-coordinate variation
+        # Simplified curvature computation using Laplacian
         for i, vertex in enumerate(vertices):
-            # Find neighbors (simplified)
-            neighbors = [v for v in vertices if np.linalg.norm(v - vertex) < 0.3]
+            # Find adjacent vertices (one-ring neighborhood)
+            neighbors = []
+            for face in faces:
+                if i in face:
+                    neighbors.extend([v for v in face if v != i])
+            neighbors = list(set(neighbors))
+            
             if len(neighbors) > 2:
-                # Rough curvature estimate
-                curvature[i] = np.std([v[2] for v in neighbors])
+                # Simple discrete mean curvature approximation
+                neighbor_vectors = vertices[neighbors] - vertex
+                curvature[i] = np.mean(np.linalg.norm(neighbor_vectors, axis=1))
+        
+        # Normalize curvature
+        if np.max(curvature) > 0:
+            curvature = curvature / np.max(curvature)
         
         return curvature
     
-    def _generate_candidate_curves(self, curvature_map, density):
-        """Generate candidate curves based on surface curvature"""
-        curves = []
+    def _generate_adaptive_mesh(self, curvature_map, density):
+        """Generate triangular mesh with adaptive sizing based on curvature"""
         vertices = self.input_mesh['vertices']
+        original_faces = self.input_mesh['faces']
         
-        # Generate curves along high-curvature regions
-        high_curvature_indices = np.where(curvature_map > np.percentile(curvature_map, 70))[0]
+        # Create adaptive sampling based on curvature
+        # High curvature = smaller triangles, low curvature = larger triangles
+        sample_points = []
+        triangle_sizes = []
         
-        for i in range(min(density, len(high_curvature_indices))):
-            start_idx = high_curvature_indices[i]
-            curve = self._trace_curve_from_point(start_idx, vertices, curvature_map)
-            if len(curve) > 3:  # Only keep meaningful curves
-                curves.append(curve)
-        
-        return curves
-    
-    def _trace_curve_from_point(self, start_idx, vertices, curvature_map):
-        """Trace a curve following high curvature regions"""
-        curve = [start_idx]
-        current_idx = start_idx
-        visited = set([start_idx])
-        
-        for _ in range(10):  # Limit curve length
-            # Find neighboring high-curvature vertices
-            neighbors = []
-            for i, vertex in enumerate(vertices):
-                if (i not in visited and 
-                    np.linalg.norm(vertex - vertices[current_idx]) < 0.2 and
-                    curvature_map[i] > 0.1):
-                    neighbors.append((i, curvature_map[i]))
+        for i, vertex in enumerate(vertices):
+            curvature_val = curvature_map[i]
             
-            if not neighbors:
-                break
-                
-            # Move to highest curvature neighbor
-            next_idx = max(neighbors, key=lambda x: x[1])[0]
-            curve.append(next_idx)
-            visited.add(next_idx)
-            current_idx = next_idx
+            # Determine triangle size based on curvature
+            # High curvature (close to 1) -> small triangles (high density)
+            # Low curvature (close to 0) -> large triangles (low density)
+            base_size = 0.1
+            adaptive_size = base_size * (1.0 + 2.0 * curvature_val)  # 0.1 to 0.3 range
+            
+            # Sample this region
+            sample_points.append(vertex)
+            triangle_sizes.append(adaptive_size)
+            
+            # Add extra samples in high-curvature regions
+            if curvature_val > 0.7:
+                # Add additional samples around high curvature points
+                for j in range(2):
+                    offset = np.random.normal(0, adaptive_size/3, 3)
+                    sample_points.append(vertex + offset)
+                    triangle_sizes.append(adaptive_size * 0.8)
         
-        return curve
+        # Convert to 2D projection for printing pattern
+        sample_points_2d = np.array([p[:2] for p in sample_points])
+        
+        # Create Delaunay triangulation of sampled points
+        if len(sample_points_2d) > 3:
+            tri = Delaunay(sample_points_2d)
+            adaptive_faces = tri.simplices
+            
+            # Store triangle information
+            adaptive_mesh = {
+                'vertices_2d': sample_points_2d,
+                'vertices_3d': np.array(sample_points),
+                'faces': adaptive_faces,
+                'triangle_sizes': triangle_sizes
+            }
+            
+            return adaptive_mesh
+        else:
+            # Fallback to original mesh
+            return {
+                'vertices_2d': vertices[:, :2],
+                'vertices_3d': vertices,
+                'faces': original_faces,
+                'triangle_sizes': [0.15] * len(original_faces)
+            }
     
-    def _optimize_curve_placement(self, candidate_curves, curvature_map, stretch_x, stretch_y):
-        """Optimize which curves to use and their properties"""
-        # Simplified optimization: select curves that cover high-curvature areas
-        optimized = []
-        covered_vertices = set()
+    def _optimize_triangle_placement(self, adaptive_mesh, curvature_map, stretch_x, stretch_y):
+        """Optimize triangle distribution considering fabric stretch mechanics"""
+        optimized_triangles = []
         
-        # Sort curves by "importance" (total curvature along curve)
-        curve_scores = []
-        for curve in candidate_curves:
-            score = sum(curvature_map[i] for i in curve)
-            curve_scores.append((curve, score))
+        # Apply fabric stretch compensation
+        vertices_2d = adaptive_mesh['vertices_2d'].copy()
+        vertices_2d[:, 0] /= stretch_x  # Compress X for later stretching
+        vertices_2d[:, 1] /= stretch_y  # Compress Y for later stretching
         
-        # Select top curves
-        curve_scores.sort(key=lambda x: x[1], reverse=True)
-        for curve, score in curve_scores[:5]:  # Top 5 curves
-            optimized.append({
-                'vertices': curve,
-                'width': 0.1 + 0.05 * score,  # Wider curves for high curvature
-                'material_density': 0.5 + 0.3 * score  # Higher density for structural areas
-            })
-            covered_vertices.update(curve)
+        for face in adaptive_mesh['faces']:
+            if len(face) == 3:  # Only process triangles
+                # Get triangle vertices
+                v1, v2, v3 = face
+                
+                # Calculate triangle properties
+                points_2d = vertices_2d[face]
+                points_3d = adaptive_mesh['vertices_3d'][face]
+                
+                # Triangle area in 2D (printing plane)
+                area_2d = self._triangle_area(points_2d)
+                
+                # Estimate required rigidity based on curvature
+                avg_curvature = np.mean([curvature_map[v] for v in face])
+                rigidity_factor = 0.5 + avg_curvature  # 0.5 to 1.5 range
+                
+                optimized_triangles.append({
+                    'vertices_2d': points_2d,
+                    'vertices_3d': points_3d,
+                    'area': area_2d,
+                    'rigidity': rigidity_factor,
+                    'thickness': 0.1 + 0.1 * avg_curvature,  # Thicker in high-curvature areas
+                    'material_density': 0.3 + 0.4 * avg_curvature  # Denser printing
+                })
         
-        return optimized
+        return optimized_triangles
+    
+    def _triangle_area(self, points):
+        """Calculate area of a triangle given 3 points"""
+        if len(points) != 3:
+            return 0
+        a, b, c = points
+        return 0.5 * abs(
+            a[0]*(b[1]-c[1]) + 
+            b[0]*(c[1]-a[1]) + 
+            c[0]*(a[1]-b[1])
+        )
     
     def export_print_pattern(self, filepath):
-        """Export curves for 3D printing on stretched fabric"""
-        if self.optimized_curves is None:
-            return "✗ No curves computed"
+        """Export adaptive triangular mesh for 3D printing on stretched fabric"""
+        if self.optimized_triangles is None:
+            return "✗ No triangles computed"
         
         try:
             if filepath.endswith('.svg'):
-                return self._export_curves_svg(filepath)
+                return self._export_triangles_svg(filepath)
             else:
-                return self._export_curves_gcode(filepath)
+                return self._export_triangles_gcode(filepath)
                 
         except Exception as e:
             return f"✗ Export error: {str(e)}"
     
-    def _export_curves_svg(self, filepath):
-        """Export curves as SVG for visualization"""
-        vertices = self.input_mesh['vertices']
+    def _export_triangles_svg(self, filepath):
+        """Export adaptive triangles as SVG for 3D printing"""
+        if not self.optimized_triangles:
+            return "✗ No triangles to export"
         
-        # Scale and project to 2D (accounting for fabric stretch)
-        scale = 500
+        # Scale for visualization
+        scale = 800
         margin = 50
         
-        # Apply inverse stretch to get printing coordinates
-        stretch_x, stretch_y = self.stretch_factors
-        projected_vertices = vertices.copy()
-        projected_vertices[:, 0] /= stretch_x  # Compress X for stretching
-        projected_vertices[:, 1] /= stretch_y  # Compress Y for stretching
+        # Get all 2D points and normalize
+        all_points = []
+        for triangle in self.optimized_triangles:
+            all_points.extend(triangle['vertices_2d'])
         
-        # Normalize to [0,1] and scale
-        min_vals = np.min(projected_vertices[:, :2], axis=0)
-        max_vals = np.max(projected_vertices[:, :2], axis=0)
+        all_points = np.array(all_points)
+        min_vals = np.min(all_points, axis=0)
+        max_vals = np.max(all_points, axis=0)
         range_vals = max_vals - min_vals
         range_vals[range_vals == 0] = 1
         
-        normalized_vertices = (projected_vertices[:, :2] - min_vals) / range_vals
-        scaled_vertices = normalized_vertices * scale
+        # Normalize and scale
+        normalized_points = (all_points - min_vals) / range_vals
+        max_normalized = np.max(normalized_points, axis=0)
         
-        width = scale + 2 * margin
-        height = scale + 2 * margin
+        width = max_normalized[0] * scale + 2 * margin
+        height = max_normalized[1] * scale + 2 * margin
         
         svg_content = f'''<?xml version="1.0" encoding="UTF-8"?>
 <svg width="{width}" height="{height}" xmlns="http://www.w3.org/2000/svg">
-  <title>CurveUp - 3D Printing Pattern for Stretched Fabric</title>
+  <title>CurveUp - Adaptive Triangular Mesh for 3D Printing</title>
   <rect width="100%" height="100%" fill="white"/>
   
   <text x="{width/2}" y="30" text-anchor="middle" font-family="Arial" font-size="16" font-weight="bold">
-    CurveUp Printing Pattern
+    CurveUp Adaptive Triangular Mesh
   </text>
-  <text x="{width/2}" y="50" text-anchor="middle" font-family="Arial" font-size="12">
-    Stretch Factors: {self.stretch_factors[0]:.1f}x{self.stretch_factors[1]:.1f}
+  <text x="{width/2}" y="55" text-anchor="middle" font-family="Arial" font-size="12">
+    Stretch Factors: {self.stretch_factors[0]:.1f}x{self.stretch_factors[1]:.1f} | Triangles: {len(self.optimized_triangles)}
   </text>
 '''
         
-        # Draw each optimized curve
-        for i, curve_data in enumerate(self.optimized_curves):
-            curve_vertices = curve_data['vertices']
-            width = curve_data['width'] * 20  # Visual width
+        # Draw each adaptive triangle
+        for i, triangle in enumerate(self.optimized_triangles):
+            points_2d = triangle['vertices_2d']
             
-            points = []
-            for vertex_idx in curve_vertices:
-                if vertex_idx < len(scaled_vertices):
-                    x = scaled_vertices[vertex_idx, 0] + margin
-                    y = scaled_vertices[vertex_idx, 1] + margin
-                    points.append(f"{x:.1f},{y:.1f}")
+            # Normalize and scale points
+            scaled_points = []
+            for point in points_2d:
+                normalized = (point - min_vals) / range_vals
+                x = normalized[0] * scale + margin
+                y = normalized[1] * scale + margin
+                scaled_points.append((x, y))
             
-            if len(points) > 1:
-                points_str = " ".join(points)
-                svg_content += f'  <polyline points="{points_str}" fill="none" stroke="blue" stroke-width="{width}" opacity="0.7"/>\n'
+            # Create polygon points string
+            points_str = " ".join([f"{x:.1f},{y:.1f}" for x, y in scaled_points])
+            
+            # Determine fill color based on rigidity (darker = more rigid)
+            rigidity = triangle['rigidity']
+            intensity = int(100 + 100 * rigidity)  # 100-200 range
+            fill_color = f"rgb({intensity}, {intensity}, 255)"  # Blue shades
+            
+            # Determine stroke width based on thickness
+            stroke_width = 1 + triangle['thickness'] * 3
+            
+            svg_content += f'''
+  <!-- Triangle {i} - Rigidity: {rigidity:.2f} -->
+  <polygon points="{points_str}" 
+           fill="{fill_color}" 
+           stroke="navy" 
+           stroke-width="{stroke_width}" 
+           opacity="0.8"/>'''
         
+        # Add legend
+        legend_y = height - 80
         svg_content += f'''
-  <text x="20" y="{height-20}" font-family="Arial" font-size="10">
-    Print these curves on fabric stretched {self.stretch_factors[0]:.1f}x{self.stretch_factors[1]:.1f}
+  <!-- Legend -->
+  <rect x="20" y="{legend_y}" width="150" height="60" fill="white" stroke="gray" stroke-width="1"/>
+  <text x="30" y="{legend_y + 20}" font-family="Arial" font-size="11" font-weight="bold">Legend:</text>
+  <text x="30" y="{legend_y + 35}" font-family="Arial" font-size="10">• Darker blue = More rigid</text>
+  <text x="30" y="{legend_y + 50}" font-family="Arial" font-size="10">• Thicker border = Thicker print</text>
+  
+  <text x="20" y="{height-10}" font-family="Arial" font-size="10">
+    Print this pattern on fabric stretched {self.stretch_factors[0]:.1f}x{self.stretch_factors[1]:.1f}
   </text>
 </svg>'''
         
         with open(filepath, 'w', encoding='utf-8') as f:
             f.write(svg_content)
         
-        return f"✓ Printing pattern exported to {filepath}"
+        return f"✓ Adaptive triangle pattern exported to {filepath}"
     
-    def _export_curves_gcode(self, filepath):
-        """Export curves as G-code for 3D printers"""
+    def _export_triangles_gcode(self, filepath):
+        """Export triangles as G-code for 3D printers"""
         # This would generate actual 3D printer instructions
         return "G-code export not yet implemented"
