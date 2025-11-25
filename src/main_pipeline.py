@@ -57,19 +57,52 @@ class CurveUpToolchain:
         except Exception as e:
             return f"✗ Parameterization error: {str(e)}"
     
-    def _simple_conformal_parameterization(self, vertices, faces):
-        """Simple conformal-like parameterization"""
-        # Use X,Y coordinates as UV coordinates (planar projection)
-        uv_coords = vertices[:, :2].copy()
+def _simple_conformal_parameterization(self, vertices, faces):
+    """Proper mesh unfolding for cube pattern generation"""
+    # For a cube, we need to create an unfolded net (pattern pieces)
+    # This will position each face separately in 2D space
+    
+    # We'll create UV coordinates that represent the unfolded cube
+    uv_coords = np.zeros((len(vertices), 2))
+    
+    # Define the unfolded cube net layout:
+    # Each face gets its own position in 2D space
+    face_layout = {
+        0: {'face': [0, 1, 2, 3], 'position': [1, 1], 'name': 'front'},    # Center
+        1: {'face': [4, 5, 6, 7], 'position': [1, 0], 'name': 'top'},      # Above center
+        2: {'face': [0, 1, 5, 4], 'position': [1, 2], 'name': 'bottom'},   # Below center  
+        3: {'face': [2, 3, 7, 6], 'position': [1, 3], 'name': 'back'},     # Below bottom
+        4: {'face': [0, 3, 7, 4], 'position': [0, 1], 'name': 'left'},     # Left of center
+        5: {'face': [1, 2, 6, 5], 'position': [2, 1], 'name': 'right'},    # Right of center
+    }
+    
+    # Size of each face in UV space
+    face_size = 1.0
+    
+    # Assign UV coordinates based on face positions
+    for face_id, layout in face_layout.items():
+        face_vertices = layout['face']
+        pos_x, pos_y = layout['position']
         
-        # Normalize to [0,1] range
-        min_vals = np.min(uv_coords, axis=0)
-        max_vals = np.max(uv_coords, axis=0)
-        range_vals = max_vals - min_vals
-        range_vals[range_vals == 0] = 1  # Avoid division by zero
-        
-        uv_coords = (uv_coords - min_vals) / range_vals
-        return uv_coords
+        # Map each vertex in this face to its position in the unfolded net
+        for i, vertex_id in enumerate(face_vertices):
+            if i == 0:  # bottom-left
+                uv_coords[vertex_id] = [pos_x * face_size, (pos_y + 1) * face_size]
+            elif i == 1:  # bottom-right
+                uv_coords[vertex_id] = [(pos_x + 1) * face_size, (pos_y + 1) * face_size]
+            elif i == 2:  # top-right
+                uv_coords[vertex_id] = [(pos_x + 1) * face_size, pos_y * face_size]
+            elif i == 3:  # top-left
+                uv_coords[vertex_id] = [pos_x * face_size, pos_y * face_size]
+    
+    # Normalize to [0,1] range
+    min_vals = np.min(uv_coords, axis=0)
+    max_vals = np.max(uv_coords, axis=0)
+    range_vals = max_vals - min_vals
+    range_vals[range_vals == 0] = 1
+    
+    uv_coords = (uv_coords - min_vals) / range_vals
+    return uv_coords
     
     def _simple_lscm_parameterization(self, vertices, faces):
         """Simple LSCM-like parameterization using X,Z coordinates"""
@@ -130,65 +163,97 @@ class CurveUpToolchain:
             return f"✗ Export error: {str(e)}"
     
     def _export_svg(self, filepath):
-        """Export pattern to proper SVG format showing all vertices and connections"""
-        pattern = self.optimized_pattern
-        
-        # Scale for better visibility
-        scale = 200
-        pattern_scaled = pattern * scale
-        
-        # Add margin
-        margin = 50
-        min_x, min_y = np.min(pattern_scaled, axis=0)
-        max_x, max_y = np.max(pattern_scaled, axis=0)
-        
-        width = max_x - min_x + 2 * margin
-        height = max_y - min_y + 2 * margin
-        
-        # Center the pattern
-        pattern_centered = pattern_scaled.copy()
-        pattern_centered[:, 0] = pattern_centered[:, 0] - min_x + margin
-        pattern_centered[:, 1] = pattern_centered[:, 1] - min_y + margin
-        
-        svg_content = f'''<?xml version="1.0" encoding="UTF-8"?>
+    """Export pattern showing individual fabric pieces"""
+    pattern = self.optimized_pattern
+    
+    # Scale for better visibility
+    scale = 300
+    pattern_scaled = pattern * scale
+    
+    # Add generous margin
+    margin = 80
+    min_x, min_y = np.min(pattern_scaled, axis=0)
+    max_x, max_y = np.max(pattern_scaled, axis=0)
+    
+    width = max_x - min_x + 2 * margin
+    height = max_y - min_y + 2 * margin
+    
+    # Center the pattern
+    pattern_centered = pattern_scaled.copy()
+    pattern_centered[:, 0] = pattern_centered[:, 0] - min_x + margin
+    pattern_centered[:, 1] = pattern_centered[:, 1] - min_y + margin
+    
+    # Define face colors for better visualization
+    face_colors = ['#FFCCCC', '#CCFFCC', '#CCCCFF', '#FFFFCC', '#FFCCFF', '#CCFFFF']
+    face_names = ['Front', 'Top', 'Bottom', 'Back', 'Left', 'Right']
+    
+    svg_content = f'''<?xml version="1.0" encoding="UTF-8"?>
 <svg width="{width}" height="{height}" xmlns="http://www.w3.org/2000/svg">
-  <title>CurveUp Pattern</title>
+  <title>CurveUp Pattern - Fabric Pieces</title>
   
   <rect width="100%" height="100%" fill="white"/>
   
-  <!-- Draw edges between connected vertices -->
-  <g stroke="blue" stroke-width="1" fill="none">
+  <!-- Draw each face as a separate fabric piece -->
 '''
-        
-        # Draw edges from the original mesh faces
-        faces = self.input_mesh['faces']
-        for face in faces:
-            if len(face) >= 3:
-                for i in range(len(face)):
-                    v1 = face[i]
-                    v2 = face[(i + 1) % len(face)]
-                    if v1 < len(pattern_centered) and v2 < len(pattern_centered):
-                        x1, y1 = pattern_centered[v1]
-                        x2, y2 = pattern_centered[v2]
-                        svg_content += f'    <line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}"/>\n'
-        
-        svg_content += '  </g>\n'
-        
-        # Draw all vertices
-        for i, (x, y) in enumerate(pattern_centered):
-            svg_content += f'  <circle cx="{x}" cy="{y}" r="3" fill="red"/>\n'
-            svg_content += f'  <text x="{x+5}" y="{y-5}" font-family="Arial" font-size="8">{i}</text>\n'
-        
-        svg_content += f'''
-  <text x="10" y="20" font-family="Arial" font-size="12" fill="navy">
-    CurveUp Pattern - {len(pattern)} vertices, {len(faces)} faces
+    
+    # Draw each face as a separate colored polygon
+    faces = self.input_mesh['faces']
+    for i, face in enumerate(faces):
+        if i < len(face_colors):
+            face_points = []
+            for vertex_idx in face:
+                if vertex_idx < len(pattern_centered):
+                    x, y = pattern_centered[vertex_idx]
+                    face_points.append((x, y))
+            
+            if len(face_points) >= 3:
+                points_str = " ".join([f"{x:.1f},{y:.1f}" for x, y in face_points])
+                
+                # Add the face polygon
+                svg_content += f'  <polygon points="{points_str}" fill="{face_colors[i]}" stroke="black" stroke-width="2" opacity="0.7"/>\n'
+                
+                # Add face label
+                center_x = sum(x for x, y in face_points) / len(face_points)
+                center_y = sum(y for x, y in face_points) / len(face_points)
+                svg_content += f'  <text x="{center_x:.1f}" y="{center_y:.1f}" text-anchor="middle" font-family="Arial" font-size="12" font-weight="bold" fill="black">{face_names[i] if i < len(face_names) else f"Face {i}"}</text>\n'
+    
+    # Draw vertices and edges
+    svg_content += '  <!-- Draw edges -->\n'
+    svg_content += '  <g stroke="black" stroke-width="1" fill="none">\n'
+    
+    for face in faces:
+        if len(face) >= 3:
+            for j in range(len(face)):
+                v1 = face[j]
+                v2 = face[(j + 1) % len(face)]
+                if v1 < len(pattern_centered) and v2 < len(pattern_centered):
+                    x1, y1 = pattern_centered[v1]
+                    x2, y2 = pattern_centered[v2]
+                    svg_content += f'    <line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}"/>\n'
+    
+    svg_content += '  </g>\n'
+    
+    # Draw vertices
+    svg_content += '  <!-- Draw vertices -->\n'
+    for i, (x, y) in enumerate(pattern_centered):
+        svg_content += f'  <circle cx="{x}" cy="{y}" r="4" fill="red" stroke="darkred" stroke-width="1"/>\n'
+        svg_content += f'  <text x="{x+8}" y="{y+4}" font-family="Arial" font-size="10" fill="darkred">V{i}</text>\n'
+    
+    # Add title and info
+    svg_content += f'''
+  <!-- Title and info -->
+  <text x="{width/2}" y="30" text-anchor="middle" font-family="Arial" font-size="16" font-weight="bold" fill="navy">
+    CurveUp - Fabric Pattern Pieces
+  </text>
+  <text x="20" y="{height-20}" font-family="Arial" font-size="10" fill="gray">
+    {len(pattern)} vertices, {len(faces)} fabric pieces - Ready for cutting and assembly
   </text>
 </svg>'''
-        
-        with open(filepath, 'w', encoding='utf-8') as f:
-            f.write(svg_content)
-        
-        return f"✓ SVG exported to {filepath}"
+    
+    with open(filepath, 'w', encoding='utf-8') as f:
+        f.write(svg_content)
+    
+    return f"✓ SVG pattern exported to {filepath} ({len(faces)} fabric pieces)"
     
     def _export_text(self, filepath):
         """Export pattern to simple text format"""
