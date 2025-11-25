@@ -129,34 +129,35 @@ class MainWindow(QMainWindow):
                 self.log_message(f"✗ Error loading shape: {e}")
                 
     def generate_pattern(self):
-        if not self.toolchain:
-            self.log_message("✗ Toolchain not initialized")
-            return
-            
-        try:
-            self.progress.setVisible(True)
-            self.progress.setValue(0)
-            
-            # Step 1: Compute optimal curves for 3D printing
-            stretch_x = self.spin_stretch_x.value()
-            stretch_y = self.spin_stretch_y.value()
-            self.log_message("🔄 Computing optimal curves...")
-            self.progress.setValue(50)
-            
-            result = self.toolchain.compute_optimal_curves(stretch_x, stretch_y)
-            self.log_message(f"✓ {result}")
-            
-            self.progress.setValue(100)
-            self.log_message("🎉 Curve computation complete!")
-            
-            # Enable export button if successful
-            if "✓" in result:
-                self.btn_export.setEnabled(True)
-            
-        except Exception as e:
-            self.log_message(f"✗ Error computing curves: {e}")
-        finally:
-            self.progress.setVisible(False)
+    if not self.toolchain:
+        self.log_message("✗ Toolchain not initialized")
+        return
+        
+    try:
+        self.progress.setVisible(True)
+        self.progress.setValue(0)
+        
+        # Step 1: Compute optimal triangles for 3D printing
+        stretch_x = self.spin_stretch_x.value()
+        stretch_y = self.spin_stretch_y.value()
+        self.log_message("🔄 Computing adaptive triangles...")
+        self.progress.setValue(50)
+        
+        # FIX: Call the correct method name
+        result = self.toolchain.compute_optimal_triangles(stretch_x, stretch_y)
+        self.log_message(f"✓ {result}")
+        
+        self.progress.setValue(100)
+        self.log_message("🎉 Triangle computation complete!")
+        
+        # Enable export button if successful
+        if "✓" in result:
+            self.btn_export.setEnabled(True)
+        
+    except Exception as e:
+        self.log_message(f"✗ Error computing triangles: {e}")
+    finally:
+        self.progress.setVisible(False)
             
     def export_pattern(self):
         if not self.toolchain:
