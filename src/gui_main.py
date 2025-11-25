@@ -15,7 +15,7 @@ class MainWindow(QMainWindow):
         self.init_toolchain()
         
     def init_ui(self):
-        self.setWindowTitle("CurveUp - 3D to 2D Fabric Pattern Generator")
+        self.setWindowTitle("CurveUp - 3D Printing Pattern Generator for Stretched Fabric")
         self.setGeometry(100, 100, 600, 500)
         
         central_widget = QWidget()
@@ -24,52 +24,52 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout()
         
         # Header
-        header = QLabel("CurveUp Fabric Pattern Generator")
+        header = QLabel("CurveUp - 3D Printing on Stretched Fabric")
         header.setStyleSheet("font-size: 18px; font-weight: bold; padding: 10px; color: #2c3e50;")
         header.setAlignment(Qt.AlignCenter)
         layout.addWidget(header)
         
         # File operations
-        file_group = QGroupBox("1. Load 3D Model")
+        file_group = QGroupBox("1. Load Target 3D Shape")
         file_layout = QVBoxLayout()
         
-        self.btn_load = QPushButton("Load 3D Model (STL/OBJ/PLY)")
+        self.btn_load = QPushButton("Load 3D Shape (OBJ/STL)")
         self.btn_load.clicked.connect(self.load_model)
         self.btn_load.setStyleSheet("QPushButton { padding: 8px; font-weight: bold; }")
         file_layout.addWidget(self.btn_load)
         
-        self.file_label = QLabel("No model loaded")
+        self.file_label = QLabel("No shape loaded")
         file_layout.addWidget(self.file_label)
         
         file_group.setLayout(file_layout)
         layout.addWidget(file_group)
         
-        # Parameterization settings
-        param_group = QGroupBox("2. Parameterization Settings")
-        param_layout = QVBoxLayout()
+        # Curve settings
+        curve_group = QGroupBox("2. Curve Settings")
+        curve_layout = QVBoxLayout()
         
         self.cmb_method = QComboBox()
-        self.cmb_method.addItems(["Conformal", "LSCM"])
-        param_layout.addWidget(QLabel("Parameterization Method:"))
-        param_layout.addWidget(self.cmb_method)
+        self.cmb_method.addItems(["Auto Curvature", "Manual Placement"])
+        curve_layout.addWidget(QLabel("Curve Generation:"))
+        curve_layout.addWidget(self.cmb_method)
         
-        param_group.setLayout(param_layout)
-        layout.addWidget(param_group)
+        curve_group.setLayout(curve_layout)
+        layout.addWidget(curve_group)
         
         # Fabric properties
-        fabric_group = QGroupBox("3. Fabric Properties")
+        fabric_group = QGroupBox("3. Fabric Stretch Properties")
         fabric_layout = QHBoxLayout()
         
         self.spin_stretch_x = QDoubleSpinBox()
-        self.spin_stretch_x.setRange(0.1, 3.0)
-        self.spin_stretch_x.setValue(1.2)
+        self.spin_stretch_x.setRange(1.0, 3.0)
+        self.spin_stretch_x.setValue(1.5)
         self.spin_stretch_x.setSingleStep(0.1)
         fabric_layout.addWidget(QLabel("X Stretch:"))
         fabric_layout.addWidget(self.spin_stretch_x)
         
         self.spin_stretch_y = QDoubleSpinBox()
-        self.spin_stretch_y.setRange(0.1, 3.0)
-        self.spin_stretch_y.setValue(1.2)
+        self.spin_stretch_y.setRange(1.0, 3.0)
+        self.spin_stretch_y.setValue(1.5)
         self.spin_stretch_y.setSingleStep(0.1)
         fabric_layout.addWidget(QLabel("Y Stretch:"))
         fabric_layout.addWidget(self.spin_stretch_y)
@@ -80,14 +80,15 @@ class MainWindow(QMainWindow):
         # Process buttons
         button_layout = QHBoxLayout()
         
-        self.btn_generate = QPushButton("Generate 2D Pattern")
+        self.btn_generate = QPushButton("Compute Optimal Curves")
         self.btn_generate.clicked.connect(self.generate_pattern)
         self.btn_generate.setStyleSheet("QPushButton { background-color: #3498db; color: white; padding: 10px; font-weight: bold; }")
         button_layout.addWidget(self.btn_generate)
         
-        self.btn_export = QPushButton("Export Pattern")
+        self.btn_export = QPushButton("Export Printing Pattern")
         self.btn_export.clicked.connect(self.export_pattern)
         self.btn_export.setStyleSheet("QPushButton { background-color: #27ae60; color: white; padding: 10px; font-weight: bold; }")
+        self.btn_export.setEnabled(False)
         button_layout.addWidget(self.btn_export)
         
         layout.addLayout(button_layout)
@@ -116,8 +117,8 @@ class MainWindow(QMainWindow):
             
     def load_model(self):
         filepath, _ = QFileDialog.getOpenFileName(
-            self, "Open 3D Model", "", 
-            "3D Files (*.stl *.obj *.ply *.off);;All Files (*.*)"
+            self, "Open 3D Shape", "", 
+            "3D Files (*.obj *.stl *.ply);;All Files (*.*)"
         )
         if filepath and self.toolchain:
             try:
@@ -125,7 +126,7 @@ class MainWindow(QMainWindow):
                 self.file_label.setText(f"Loaded: {os.path.basename(filepath)}")
                 self.log_message(f"✓ {result}")
             except Exception as e:
-                self.log_message(f"✗ Error loading model: {e}")
+                self.log_message(f"✗ Error loading shape: {e}")
                 
     def generate_pattern(self):
         if not self.toolchain:
@@ -134,25 +135,27 @@ class MainWindow(QMainWindow):
             
         try:
             self.progress.setVisible(True)
+            self.progress.setValue(0)
             
-            # Step 1: Parameterize
-            method = self.cmb_method.currentText().lower()
-            self.log_message("🔄 Parameterizing mesh...")
-            result1 = self.toolchain.parameterize_mesh(method)
-            self.log_message(f"✓ {result1}")
-            
-            # Step 2: Optimize
+            # Step 1: Compute optimal curves for 3D printing
             stretch_x = self.spin_stretch_x.value()
             stretch_y = self.spin_stretch_y.value()
-            self.log_message("🔄 Optimizing pattern...")
-            result2 = self.toolchain.optimize_pattern(stretch_x, stretch_y)
-            self.log_message(f"✓ {result2}")
+            self.log_message("🔄 Computing optimal curves...")
+            self.progress.setValue(50)
             
-            self.log_message("🎉 Pattern generation complete!")
-            self.progress.setVisible(False)
+            result = self.toolchain.compute_optimal_curves(stretch_x, stretch_y)
+            self.log_message(f"✓ {result}")
+            
+            self.progress.setValue(100)
+            self.log_message("🎉 Curve computation complete!")
+            
+            # Enable export button if successful
+            if "✓" in result:
+                self.btn_export.setEnabled(True)
             
         except Exception as e:
-            self.log_message(f"✗ Error generating pattern: {e}")
+            self.log_message(f"✗ Error computing curves: {e}")
+        finally:
             self.progress.setVisible(False)
             
     def export_pattern(self):
@@ -160,17 +163,29 @@ class MainWindow(QMainWindow):
             self.log_message("✗ Toolchain not initialized")
             return
             
-        filepath, _ = QFileDialog.getSaveFileName(
-            self, "Export Pattern", "pattern.dxf",
-            "DXF Files (*.dxf);;SVG Files (*.svg);;All Files (*.*)"
+        filepath, selected_filter = QFileDialog.getSaveFileName(
+            self, "Export Printing Pattern", "curveup_pattern",
+            "SVG Files (*.svg);;All Files (*.*)"
         )
+        
         if filepath:
             try:
-                result = self.toolchain.export_pattern(filepath)
+                # Ensure correct file extension
+                if selected_filter == "SVG Files (*.svg)" and not filepath.endswith('.svg'):
+                    filepath += '.svg'
+                    
+                result = self.toolchain.export_print_pattern(filepath)
                 self.log_message(f"✓ {result}")
-                QMessageBox.information(self, "Export Complete", f"Pattern exported to:\n{filepath}")
+                
+                # Show success message
+                QMessageBox.information(self, "Export Complete", 
+                                      f"Printing pattern successfully exported!\n\n"
+                                      f"File: {filepath}\n"
+                                      f"Stretch Factors: {self.spin_stretch_x.value():.1f}x{self.spin_stretch_y.value():.1f}")
+                
             except Exception as e:
                 self.log_message(f"✗ Error exporting pattern: {e}")
+                QMessageBox.critical(self, "Export Error", f"Failed to export pattern:\n{str(e)}")
                 
     def log_message(self, message):
         self.text_log.append(message)
