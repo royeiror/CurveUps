@@ -118,14 +118,71 @@ class CurveUpToolchain:
             return "✗ No optimized pattern to export"
         
         try:
-            # Simple text export for now
-            with open(filepath, 'w') as f:
-                f.write("# CurveUp Pattern Export\n")
-                f.write(f"# Points: {len(self.optimized_pattern)}\n")
-                for i, point in enumerate(self.optimized_pattern):
-                    f.write(f"{point[0]:.6f}, {point[1]:.6f}\n")
-            
-            return f"✓ Pattern exported to {filepath} ({len(self.optimized_pattern)} points)"
+            if filepath.endswith('.svg'):
+                return self._export_svg(filepath)
+            elif filepath.endswith('.txt'):
+                return self._export_text(filepath)
+            else:
+                # Default to text export
+                return self._export_text(filepath + '.txt')
             
         except Exception as e:
             return f"✗ Export error: {str(e)}"
+    
+    def _export_svg(self, filepath):
+        """Export pattern to proper SVG format"""
+        pattern = self.optimized_pattern
+        
+        # Scale for better visibility in SVG (convert to pixels)
+        scale = 500
+        pattern_pixels = pattern * scale
+        
+        # Calculate bounds
+        min_x, min_y = np.min(pattern_pixels, axis=0)
+        max_x, max_y = np.max(pattern_pixels, axis=0)
+        width = max_x - min_x + 100  # Add padding
+        height = max_y - min_y + 100
+        
+        # Center the pattern
+        pattern_pixels[:, 0] = pattern_pixels[:, 0] - min_x + 50
+        pattern_pixels[:, 1] = pattern_pixels[:, 1] - min_y + 50
+        
+        # Create SVG content
+        svg_content = f'''<?xml version="1.0" encoding="UTF-8"?>
+<svg width="{width:.0f}" height="{height:.0f}" xmlns="http://www.w3.org/2000/svg">
+  <title>CurveUp Pattern</title>
+  <desc>2D pattern generated from 3D mesh</desc>
+  
+  <!-- Background -->
+  <rect width="100%" height="100%" fill="white"/>
+  
+  <!-- Pattern outline -->
+  <polygon points="{" ".join([f"{x:.1f},{y:.1f}" for x, y in pattern_pixels])}" 
+           fill="none" stroke="black" stroke-width="2"/>
+  
+  <!-- Vertices -->
+  {"".join([f'<circle cx="{x:.1f}" cy="{y:.1f}" r="3" fill="red"/>' for x, y in pattern_pixels])}
+  
+  <!-- Info text -->
+  <text x="10" y="20" font-family="Arial" font-size="12" fill="blue">
+    CurveUp Pattern - {len(pattern)} points
+  </text>
+</svg>'''
+        
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(svg_content)
+        
+        return f"✓ SVG pattern exported to {filepath} ({len(pattern)} points)"
+    
+    def _export_text(self, filepath):
+        """Export pattern to simple text format"""
+        pattern = self.optimized_pattern
+        
+        with open(filepath, 'w') as f:
+            f.write("# CurveUp Pattern Export\n")
+            f.write(f"# Points: {len(pattern)}\n")
+            f.write("# Format: X, Y (normalized coordinates)\n")
+            for i, point in enumerate(pattern):
+                f.write(f"{point[0]:.6f}, {point[1]:.6f}\n")
+        
+        return f"✓ Text pattern exported to {filepath} ({len(pattern)} points)"
