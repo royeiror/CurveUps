@@ -80,12 +80,12 @@ class MainWindow(QMainWindow):
         # Process buttons
         button_layout = QHBoxLayout()
         
-        self.btn_generate = QPushButton("Compute Optimal Curves")
+        self.btn_generate = QPushButton("Compute Adaptive Triangles")
         self.btn_generate.clicked.connect(self.generate_pattern)
         self.btn_generate.setStyleSheet("QPushButton { background-color: #3498db; color: white; padding: 10px; font-weight: bold; }")
         button_layout.addWidget(self.btn_generate)
         
-        self.btn_export = QPushButton("Export Printing Pattern")
+        self.btn_export = QPushButton("Export Triangle Mesh")
         self.btn_export.clicked.connect(self.export_pattern)
         self.btn_export.setStyleSheet("QPushButton { background-color: #27ae60; color: white; padding: 10px; font-weight: bold; }")
         self.btn_export.setEnabled(False)
