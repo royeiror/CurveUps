@@ -24,7 +24,7 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout()
         
         # Header
-        header = QLabel("CurveUp - 3D Printing on Stretched Fabric")
+        header = QLabel("CurveUp - Adaptive Triangular Meshes for Stretched Fabric")
         header.setStyleSheet("font-size: 18px; font-weight: bold; padding: 10px; color: #2c3e50;")
         header.setAlignment(Qt.AlignCenter)
         layout.addWidget(header)
@@ -44,17 +44,17 @@ class MainWindow(QMainWindow):
         file_group.setLayout(file_layout)
         layout.addWidget(file_group)
         
-        # Curve settings
-        curve_group = QGroupBox("2. Curve Settings")
-        curve_layout = QVBoxLayout()
+        # Mesh settings
+        mesh_group = QGroupBox("2. Mesh Settings")
+        mesh_layout = QVBoxLayout()
         
         self.cmb_method = QComboBox()
-        self.cmb_method.addItems(["Auto Curvature", "Manual Placement"])
-        curve_layout.addWidget(QLabel("Curve Generation:"))
-        curve_layout.addWidget(self.cmb_method)
+        self.cmb_method.addItems(["Adaptive Curvature", "Uniform Density"])
+        mesh_layout.addWidget(QLabel("Mesh Generation:"))
+        mesh_layout.addWidget(self.cmb_method)
         
-        curve_group.setLayout(curve_layout)
-        layout.addWidget(curve_group)
+        mesh_group.setLayout(mesh_layout)
+        layout.addWidget(mesh_group)
         
         # Fabric properties
         fabric_group = QGroupBox("3. Fabric Stretch Properties")
@@ -129,35 +129,35 @@ class MainWindow(QMainWindow):
                 self.log_message(f"✗ Error loading shape: {e}")
                 
     def generate_pattern(self):
-    if not self.toolchain:
-        self.log_message("✗ Toolchain not initialized")
-        return
-        
-    try:
-        self.progress.setVisible(True)
-        self.progress.setValue(0)
-        
-        # Step 1: Compute optimal triangles for 3D printing
-        stretch_x = self.spin_stretch_x.value()
-        stretch_y = self.spin_stretch_y.value()
-        self.log_message("🔄 Computing adaptive triangles...")
-        self.progress.setValue(50)
-        
-        # FIX: Call the correct method name
-        result = self.toolchain.compute_optimal_triangles(stretch_x, stretch_y)
-        self.log_message(f"✓ {result}")
-        
-        self.progress.setValue(100)
-        self.log_message("🎉 Triangle computation complete!")
-        
-        # Enable export button if successful
-        if "✓" in result:
-            self.btn_export.setEnabled(True)
-        
-    except Exception as e:
-        self.log_message(f"✗ Error computing triangles: {e}")
-    finally:
-        self.progress.setVisible(False)
+        if not self.toolchain:
+            self.log_message("✗ Toolchain not initialized")
+            return
+            
+        try:
+            self.progress.setVisible(True)
+            self.progress.setValue(0)
+            
+            # Step 1: Compute optimal triangles for 3D printing
+            stretch_x = self.spin_stretch_x.value()
+            stretch_y = self.spin_stretch_y.value()
+            self.log_message("🔄 Computing adaptive triangles...")
+            self.progress.setValue(50)
+            
+            # CORRECTED METHOD CALL:
+            result = self.toolchain.compute_optimal_triangles(stretch_x, stretch_y)
+            self.log_message(f"✓ {result}")
+            
+            self.progress.setValue(100)
+            self.log_message("🎉 Triangle computation complete!")
+            
+            # Enable export button if successful
+            if "✓" in result:
+                self.btn_export.setEnabled(True)
+            
+        except Exception as e:
+            self.log_message(f"✗ Error computing triangles: {e}")
+        finally:
+            self.progress.setVisible(False)
             
     def export_pattern(self):
         if not self.toolchain:
@@ -180,9 +180,10 @@ class MainWindow(QMainWindow):
                 
                 # Show success message
                 QMessageBox.information(self, "Export Complete", 
-                                      f"Printing pattern successfully exported!\n\n"
+                                      f"Triangle mesh pattern successfully exported!\n\n"
                                       f"File: {filepath}\n"
-                                      f"Stretch Factors: {self.spin_stretch_x.value():.1f}x{self.spin_stretch_y.value():.1f}")
+                                      f"Stretch Factors: {self.spin_stretch_x.value():.1f}x{self.spin_stretch_y.value():.1f}\n"
+                                      f"Triangles: {len(self.toolchain.optimized_triangles) if self.toolchain.optimized_triangles else 0}")
                 
             except Exception as e:
                 self.log_message(f"✗ Error exporting pattern: {e}")
