@@ -128,107 +128,77 @@ class CurveUpToolchain:
             
         except Exception as e:
             return f"✗ Export error: {str(e)}"
-            
-
+    
     def _export_svg(self, filepath):
-    """Export pattern to proper SVG format with unfolded faces"""
-    pattern = self.optimized_pattern
-    
-    # For a cube, we need to show the unfolded net (6 faces)
-    # Let's arrange the faces in a cross pattern
-    faces = self.input_mesh['faces']
-    vertices_2d = pattern
-    
-    # Scale for better visibility in SVG (convert to pixels)
-    scale = 100
-    spacing = 20  # Space between faces
-    
-    # Calculate face positions in the unfolded net
-    face_positions = []
-    
-    # Position the 6 faces in a cross pattern:
-    #   [1]
-    # [4][0][5]
-    #   [2]
-    #   [3]
-    
-    face_offsets = [
-        (1, 1),  # Face 0: center (front)
-        (1, 0),  # Face 1: top
-        (1, 2),  # Face 2: bottom  
-        (1, 3),  # Face 3: back (below bottom)
-        (0, 1),  # Face 4: left
-        (2, 1),  # Face 5: right
-    ]
-    
-    # Calculate bounds for SVG
-    max_faces_x = 3
-    max_faces_y = 4
-    face_width = 1.2 * scale  # Width of each face with margin
-    face_height = 1.2 * scale
-    
-    svg_width = max_faces_x * face_width + spacing
-    svg_height = max_faces_y * face_height + spacing
-    
-    # Create SVG content
-    svg_content = f'''<?xml version="1.0" encoding="UTF-8"?>
-<svg width="{svg_width}" height="{svg_height}" xmlns="http://www.w3.org/2000/svg">
-  <title>CurveUp Pattern - Unfolded Cube</title>
-  <desc>2D pattern generated from 3D mesh - Cube Unfolding</desc>
+        """Export pattern to proper SVG format showing all vertices and connections"""
+        pattern = self.optimized_pattern
+        
+        # Scale for better visibility
+        scale = 200
+        pattern_scaled = pattern * scale
+        
+        # Add margin
+        margin = 50
+        min_x, min_y = np.min(pattern_scaled, axis=0)
+        max_x, max_y = np.max(pattern_scaled, axis=0)
+        
+        width = max_x - min_x + 2 * margin
+        height = max_y - min_y + 2 * margin
+        
+        # Center the pattern
+        pattern_centered = pattern_scaled.copy()
+        pattern_centered[:, 0] = pattern_centered[:, 0] - min_x + margin
+        pattern_centered[:, 1] = pattern_centered[:, 1] - min_y + margin
+        
+        svg_content = f'''<?xml version="1.0" encoding="UTF-8"?>
+<svg width="{width}" height="{height}" xmlns="http://www.w3.org/2000/svg">
+  <title>CurveUp Pattern</title>
   
-  <!-- Background -->
   <rect width="100%" height="100%" fill="white"/>
   
-  <!-- Draw each face of the unfolded cube -->
+  <!-- Draw edges between connected vertices -->
+  <g stroke="blue" stroke-width="1" fill="none">
 '''
-    
-    # Draw each face
-    for i, face in enumerate(faces):
-        if i >= 6:  # Only draw first 6 faces for cube
-            break
-            
-        offset_x, offset_y = face_offsets[i]
-        base_x = offset_x * face_width + spacing/2
-        base_y = offset_y * face_height + spacing/2
         
-        # Get the 2D coordinates for this face's vertices
-        face_points = []
-        for vertex_idx in face:
-            if vertex_idx < len(vertices_2d):
-                x = vertices_2d[vertex_idx][0] * scale + base_x
-                y = vertices_2d[vertex_idx][1] * scale + base_y
-                face_points.append((x, y))
+        # Draw edges from the original mesh faces
+        faces = self.input_mesh['faces']
+        for face in faces:
+            if len(face) >= 3:
+                for i in range(len(face)):
+                    v1 = face[i]
+                    v2 = face[(i + 1) % len(face)]
+                    if v1 < len(pattern_centered) and v2 < len(pattern_centered):
+                        x1, y1 = pattern_centered[v1]
+                        x2, y2 = pattern_centered[v2]
+                        svg_content += f'    <line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}"/>\n'
         
-        if len(face_points) == 3:  # Triangle face
-            points_str = " ".join([f"{x:.1f},{y:.1f}" for x, y in face_points])
-            
-            # Add face polygon
-            svg_content += f'  <polygon points="{points_str}" fill="lightblue" stroke="black" stroke-width="1" opacity="0.8"/>\n'
-            
-            # Add face number
-            center_x = sum(x for x, y in face_points) / 3
-            center_y = sum(y for x, y in face_points) / 3
-            svg_content += f'  <text x="{center_x:.1f}" y="{center_y:.1f}" text-anchor="middle" font-family="Arial" font-size="10" fill="darkblue">Face {i}</text>\n'
-            
-            # Add vertices
-            for j, (x, y) in enumerate(face_points):
-                svg_content += f'  <circle cx="{x:.1f}" cy="{y:.1f}" r="2" fill="red"/>\n'
-                svg_content += f'  <text x="{x+5:.1f}" y="{y-5:.1f}" font-family="Arial" font-size="8" fill="darkred">v{face[j]}</text>\n'
-    
-    # Add title and info
-    svg_content += f'''
-  <!-- Title -->
-  <text x="{svg_width/2}" y="20" text-anchor="middle" font-family="Arial" font-size="14" font-weight="bold" fill="navy">
-    CurveUp - Unfolded Cube Pattern
-  </text>
-  
-  <!-- Info -->
-  <text x="10" y="{svg_height-10}" font-family="Arial" font-size="10" fill="gray">
-    Generated from {len(self.input_mesh['vertices'])} vertices, {len(faces)} faces
+        svg_content += '  </g>\n'
+        
+        # Draw all vertices
+        for i, (x, y) in enumerate(pattern_centered):
+            svg_content += f'  <circle cx="{x}" cy="{y}" r="3" fill="red"/>\n'
+            svg_content += f'  <text x="{x+5}" y="{y-5}" font-family="Arial" font-size="8">{i}</text>\n'
+        
+        svg_content += f'''
+  <text x="10" y="20" font-family="Arial" font-size="12" fill="navy">
+    CurveUp Pattern - {len(pattern)} vertices, {len(faces)} faces
   </text>
 </svg>'''
+        
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(svg_content)
+        
+        return f"✓ SVG exported to {filepath}"
     
-    with open(filepath, 'w', encoding='utf-8') as f:
-        f.write(svg_content)
-    
-    return f"✓ SVG pattern exported to {filepath} (unfolded cube with {len(faces)} faces)"
+    def _export_text(self, filepath):
+        """Export pattern to simple text format"""
+        pattern = self.optimized_pattern
+        
+        with open(filepath, 'w') as f:
+            f.write("# CurveUp Pattern Export\n")
+            f.write(f"# Points: {len(pattern)}\n")
+            f.write("# Format: X, Y (normalized coordinates)\n")
+            for i, point in enumerate(pattern):
+                f.write(f"{point[0]:.6f}, {point[1]:.6f}\n")
+        
+        return f"✓ Text pattern exported to {filepath} ({len(pattern)} points)"
