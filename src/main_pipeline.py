@@ -128,61 +128,107 @@ class CurveUpToolchain:
             
         except Exception as e:
             return f"✗ Export error: {str(e)}"
-    
+            
+
     def _export_svg(self, filepath):
-        """Export pattern to proper SVG format"""
-        pattern = self.optimized_pattern
-        
-        # Scale for better visibility in SVG (convert to pixels)
-        scale = 500
-        pattern_pixels = pattern * scale
-        
-        # Calculate bounds
-        min_x, min_y = np.min(pattern_pixels, axis=0)
-        max_x, max_y = np.max(pattern_pixels, axis=0)
-        width = max_x - min_x + 100  # Add padding
-        height = max_y - min_y + 100
-        
-        # Center the pattern
-        pattern_pixels[:, 0] = pattern_pixels[:, 0] - min_x + 50
-        pattern_pixels[:, 1] = pattern_pixels[:, 1] - min_y + 50
-        
-        # Create SVG content
-        svg_content = f'''<?xml version="1.0" encoding="UTF-8"?>
-<svg width="{width:.0f}" height="{height:.0f}" xmlns="http://www.w3.org/2000/svg">
-  <title>CurveUp Pattern</title>
-  <desc>2D pattern generated from 3D mesh</desc>
+    """Export pattern to proper SVG format with unfolded faces"""
+    pattern = self.optimized_pattern
+    
+    # For a cube, we need to show the unfolded net (6 faces)
+    # Let's arrange the faces in a cross pattern
+    faces = self.input_mesh['faces']
+    vertices_2d = pattern
+    
+    # Scale for better visibility in SVG (convert to pixels)
+    scale = 100
+    spacing = 20  # Space between faces
+    
+    # Calculate face positions in the unfolded net
+    face_positions = []
+    
+    # Position the 6 faces in a cross pattern:
+    #   [1]
+    # [4][0][5]
+    #   [2]
+    #   [3]
+    
+    face_offsets = [
+        (1, 1),  # Face 0: center (front)
+        (1, 0),  # Face 1: top
+        (1, 2),  # Face 2: bottom  
+        (1, 3),  # Face 3: back (below bottom)
+        (0, 1),  # Face 4: left
+        (2, 1),  # Face 5: right
+    ]
+    
+    # Calculate bounds for SVG
+    max_faces_x = 3
+    max_faces_y = 4
+    face_width = 1.2 * scale  # Width of each face with margin
+    face_height = 1.2 * scale
+    
+    svg_width = max_faces_x * face_width + spacing
+    svg_height = max_faces_y * face_height + spacing
+    
+    # Create SVG content
+    svg_content = f'''<?xml version="1.0" encoding="UTF-8"?>
+<svg width="{svg_width}" height="{svg_height}" xmlns="http://www.w3.org/2000/svg">
+  <title>CurveUp Pattern - Unfolded Cube</title>
+  <desc>2D pattern generated from 3D mesh - Cube Unfolding</desc>
   
   <!-- Background -->
   <rect width="100%" height="100%" fill="white"/>
   
-  <!-- Pattern outline -->
-  <polygon points="{" ".join([f"{x:.1f},{y:.1f}" for x, y in pattern_pixels])}" 
-           fill="none" stroke="black" stroke-width="2"/>
+  <!-- Draw each face of the unfolded cube -->
+'''
+    
+    # Draw each face
+    for i, face in enumerate(faces):
+        if i >= 6:  # Only draw first 6 faces for cube
+            break
+            
+        offset_x, offset_y = face_offsets[i]
+        base_x = offset_x * face_width + spacing/2
+        base_y = offset_y * face_height + spacing/2
+        
+        # Get the 2D coordinates for this face's vertices
+        face_points = []
+        for vertex_idx in face:
+            if vertex_idx < len(vertices_2d):
+                x = vertices_2d[vertex_idx][0] * scale + base_x
+                y = vertices_2d[vertex_idx][1] * scale + base_y
+                face_points.append((x, y))
+        
+        if len(face_points) == 3:  # Triangle face
+            points_str = " ".join([f"{x:.1f},{y:.1f}" for x, y in face_points])
+            
+            # Add face polygon
+            svg_content += f'  <polygon points="{points_str}" fill="lightblue" stroke="black" stroke-width="1" opacity="0.8"/>\n'
+            
+            # Add face number
+            center_x = sum(x for x, y in face_points) / 3
+            center_y = sum(y for x, y in face_points) / 3
+            svg_content += f'  <text x="{center_x:.1f}" y="{center_y:.1f}" text-anchor="middle" font-family="Arial" font-size="10" fill="darkblue">Face {i}</text>\n'
+            
+            # Add vertices
+            for j, (x, y) in enumerate(face_points):
+                svg_content += f'  <circle cx="{x:.1f}" cy="{y:.1f}" r="2" fill="red"/>\n'
+                svg_content += f'  <text x="{x+5:.1f}" y="{y-5:.1f}" font-family="Arial" font-size="8" fill="darkred">v{face[j]}</text>\n'
+    
+    # Add title and info
+    svg_content += f'''
+  <!-- Title -->
+  <text x="{svg_width/2}" y="20" text-anchor="middle" font-family="Arial" font-size="14" font-weight="bold" fill="navy">
+    CurveUp - Unfolded Cube Pattern
+  </text>
   
-  <!-- Vertices -->
-  {"".join([f'<circle cx="{x:.1f}" cy="{y:.1f}" r="3" fill="red"/>' for x, y in pattern_pixels])}
-  
-  <!-- Info text -->
-  <text x="10" y="20" font-family="Arial" font-size="12" fill="blue">
-    CurveUp Pattern - {len(pattern)} points
+  <!-- Info -->
+  <text x="10" y="{svg_height-10}" font-family="Arial" font-size="10" fill="gray">
+    Generated from {len(self.input_mesh['vertices'])} vertices, {len(faces)} faces
   </text>
 </svg>'''
-        
-        with open(filepath, 'w', encoding='utf-8') as f:
-            f.write(svg_content)
-        
-        return f"✓ SVG pattern exported to {filepath} ({len(pattern)} points)"
     
-    def _export_text(self, filepath):
-        """Export pattern to simple text format"""
-        pattern = self.optimized_pattern
-        
-        with open(filepath, 'w') as f:
-            f.write("# CurveUp Pattern Export\n")
-            f.write(f"# Points: {len(pattern)}\n")
-            f.write("# Format: X, Y (normalized coordinates)\n")
-            for i, point in enumerate(pattern):
-                f.write(f"{point[0]:.6f}, {point[1]:.6f}\n")
-        
-        return f"✓ Text pattern exported to {filepath} ({len(pattern)} points)"
+    with open(filepath, 'w', encoding='utf-8') as f:
+        f.write(svg_content)
+    
+    return f"✓ SVG pattern exported to {filepath} (unfolded cube with {len(faces)} faces)"
